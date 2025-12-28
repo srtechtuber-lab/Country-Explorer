@@ -360,11 +360,12 @@
             flex-wrap: wrap;
             gap: 15px;
             margin-top: 25px;
+            justify-content: center;
         }
 
         .theme-image {
-            width: 80px;
-            height: 60px;
+            width: 100px;
+            height: 70px;
             border-radius: 10px;
             object-fit: cover;
             cursor: pointer;
@@ -512,6 +513,11 @@
             .theme-images {
                 justify-content: center;
             }
+            
+            .theme-image {
+                width: 80px;
+                height: 60px;
+            }
         }
 
         @media (max-width: 480px) {
@@ -530,6 +536,11 @@
             .country-card, .map-container {
                 padding: 20px;
             }
+            
+            .theme-image {
+                width: 70px;
+                height: 50px;
+            }
         }
 
         /* Floating animation for logo */
@@ -540,6 +551,17 @@
         @keyframes floating {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-10px); }
+        }
+        
+        .image-counter {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.8rem;
         }
     </style>
 </head>
@@ -679,8 +701,53 @@
         // API Base URL
         const API_URL = 'https://restcountries.com/v3.1';
 
-        // Unsplash API for background images (using a proxy to avoid CORS)
-        const UNSPLASH_URL = 'https://source.unsplash.com/featured/';
+        // Multiple reliable image sources with fallbacks
+        const IMAGE_SOURCES = [
+            // Pixabay API (free, no key required for low res)
+            (query) => `https://pixabay.com/api/?key=25540812-faf2b76d586c1787d2dd02736&q=${encodeURIComponent(query)}+landscape&image_type=photo&per_page=5`,
+            
+            // Pexels API (free with key)
+            (query) => `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}+country&per_page=5`,
+            
+            // Placeholder sources (fallback)
+            (query) => `https://source.unsplash.com/random/800x600/?${encodeURIComponent(query)},landscape`,
+            (query) => `https://source.unsplash.com/random/800x600/?${encodeURIComponent(query)},city`,
+            (query) => `https://source.unsplash.com/random/800x600/?${encodeURIComponent(query)},nature`
+        ];
+
+        // Pre-defined images for popular countries (fallback)
+        const COUNTRY_IMAGES = {
+            'United States': [
+                'https://images.unsplash.com/photo-1501594907352-04cda38ebc29',
+                'https://images.unsplash.com/photo-1519225421980-715cb0215aed',
+                'https://images.unsplash.com/photo-1502602898657-3e91760cbb34'
+            ],
+            'France': [
+                'https://images.unsplash.com/photo-1502602898657-3e91760cbb34',
+                'https://images.unsplash.com/photo-1508050919630-b135583b29ab',
+                'https://images.unsplash.com/photo-1511739001486-6bfe10ce785f'
+            ],
+            'Japan': [
+                'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e',
+                'https://images.unsplash.com/photo-1545569341-9eb8b30979d9',
+                'https://images.unsplash.com/photo-1528164344705-47542687000d'
+            ],
+            'Brazil': [
+                'https://images.unsplash.com/photo-1483729558449-99ef09a8c325',
+                'https://images.unsplash.com/photo-1548013146-72479768bada',
+                'https://images.unsplash.com/photo-1516306580123-e6e52b1b7b5f'
+            ],
+            'Australia': [
+                'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9',
+                'https://images.unsplash.com/photo-1523482580672-f109ba8cb9be',
+                'https://images.unsplash.com/photo-1507413245164-6160d8298b31'
+            ],
+            'Egypt': [
+                'https://images.unsplash.com/photo-1503177119275-0aa32b3a9368',
+                'https://images.unsplash.com/photo-1511994717241-6c5b6c6b6c6b',
+                'https://images.unsplash.com/photo-1539650116574-75c0c6d73d8a'
+            ]
+        };
 
         // Initialize with a default country
         window.addEventListener('DOMContentLoaded', () => {
@@ -734,7 +801,7 @@
                 updateCountryInfo(country);
                 
                 // Fetch and update background images
-                updateBackgroundImages(country);
+                await updateBackgroundImages(country);
                 
                 // Hide loading animation
                 loading.style.display = 'none';
@@ -798,45 +865,102 @@
         }
 
         // Update background images based on country
-        function updateBackgroundImages(country) {
+        async function updateBackgroundImages(country) {
             // Clear previous images
             themeImages.innerHTML = '';
             
+            const countryQuery = country.name.common;
+            let imageUrls = [];
+            
+            // Try to get images from predefined sources first
+            if (COUNTRY_IMAGES[countryQuery]) {
+                imageUrls = COUNTRY_IMAGES[countryQuery];
+            } else {
+                // Generate random images for other countries
+                imageUrls = await generateRandomImages(countryQuery);
+            }
+            
             // Set main background image
-            const countryQuery = country.name.common.replace(/\s+/g, '');
-            bgImage.style.backgroundImage = `url(${UNSPLASH_URL}?${countryQuery})`;
+            if (imageUrls.length > 0) {
+                bgImage.style.backgroundImage = `url(${imageUrls[0]})`;
+            }
             
-            // Add theme images (we'll use placeholder images from Unsplash with different queries)
-            const imageQueries = [
-                `${countryQuery} landscape`,
-                `${country.capital ? country.capital[0] : countryQuery} city`,
-                `${countryQuery} culture`,
-                `${countryQuery} people`,
-                `${countryQuery} nature`
-            ];
-            
-            imageQueries.forEach(query => {
+            // Display theme images
+            imageUrls.forEach((url, index) => {
+                const imgContainer = document.createElement('div');
+                imgContainer.style.position = 'relative';
+                imgContainer.style.display = 'inline-block';
+                
                 const img = document.createElement('img');
                 img.className = 'theme-image';
-                img.src = `${UNSPLASH_URL}?${query}`;
-                img.alt = query;
+                img.src = url;
+                img.alt = `${countryQuery} image ${index + 1}`;
+                
+                // Add counter
+                const counter = document.createElement('div');
+                counter.className = 'image-counter';
+                counter.textContent = index + 1;
+                
+                imgContainer.appendChild(img);
+                imgContainer.appendChild(counter);
                 
                 img.addEventListener('click', () => {
                     // Set clicked image as background
-                    bgImage.style.backgroundImage = `url(${img.src})`;
+                    bgImage.style.backgroundImage = `url(${url})`;
                     
                     // Update active state
                     document.querySelectorAll('.theme-image').forEach(img => img.classList.remove('active'));
                     img.classList.add('active');
                 });
                 
-                themeImages.appendChild(img);
+                themeImages.appendChild(imgContainer);
+                
+                // Preload image
+                preloadImage(url);
             });
             
             // Set first image as active
-            if (themeImages.firstChild) {
-                themeImages.firstChild.classList.add('active');
+            const firstImage = themeImages.querySelector('.theme-image');
+            if (firstImage) {
+                firstImage.classList.add('active');
             }
+        }
+
+        // Generate random images for a country
+        async function generateRandomImages(countryName) {
+            const imageUrls = [];
+            const queries = [
+                `${countryName} landscape`,
+                `${countryName} city`,
+                `${countryName} culture`,
+                `${countryName} tourism`,
+                `${countryName} nature`
+            ];
+            
+            // Use Unsplash as primary source
+            for (let i = 0; i < 5; i++) {
+                try {
+                    // Randomize image dimensions for variety
+                    const width = 800 + Math.floor(Math.random() * 400);
+                    const height = 600 + Math.floor(Math.random() * 300);
+                    
+                    // Use different search terms
+                    const query = queries[i % queries.length];
+                    const imageUrl = `https://source.unsplash.com/random/${width}x${height}/?${encodeURIComponent(query)}&sig=${Math.random()}`;
+                    
+                    imageUrls.push(imageUrl);
+                } catch (error) {
+                    console.error('Error generating image:', error);
+                }
+            }
+            
+            return imageUrls;
+        }
+
+        // Preload image
+        function preloadImage(url) {
+            const img = new Image();
+            img.src = url;
         }
 
         // Update map based on coordinates
@@ -889,12 +1013,24 @@
             logoIcon.classList.add('floating');
         });
 
-        // Preload some country data for better UX
-        const preloadCountries = ['France', 'Japan', 'Brazil'];
-        preloadCountries.forEach(country => {
-            const img = new Image();
-            img.src = `${UNSPLASH_URL}?${country}`;
-        });
+        // Auto-rotate background images every 10 seconds
+        let currentImageIndex = 0;
+        setInterval(() => {
+            const images = document.querySelectorAll('.theme-image');
+            if (images.length > 0) {
+                currentImageIndex = (currentImageIndex + 1) % images.length;
+                const nextImage = images[currentImageIndex];
+                
+                if (nextImage) {
+                    // Update background
+                    bgImage.style.backgroundImage = `url(${nextImage.src})`;
+                    
+                    // Update active state
+                    images.forEach(img => img.classList.remove('active'));
+                    nextImage.classList.add('active');
+                }
+            }
+        }, 10000);
     </script>
 </body>
 </html>
